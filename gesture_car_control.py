@@ -70,24 +70,28 @@ KEY_RIGHT = Key.right   # Key to steer right (RIGHT arrow)
 
 # --- Virtual Steering Wheel Settings ---
 # Deadzone: angles below this (in degrees) are treated as straight / center
-STEER_DEADZONE_DEG: float = 10.0
+STEER_DEADZONE_DEG: float = 8.0
 # Max angle: angles at or beyond this (in degrees) trigger 100% full key hold
-STEER_MAX_DEG: float = 35.0
+STEER_MAX_DEG: float = 30.0
 # Steering smoothing factor (Exponential Moving Average, 0.0 = frozen, 1.0 = instant)
 STEER_SMOOTHING_ALPHA: float = 0.35
 # Pulse cycle period (in milliseconds) for moderate turn tapping
 STEER_TAP_INTERVAL_MS: float = 120.0
 # Minimum active pulse duration (in milliseconds) during a moderate tap
-STEER_MIN_PULSE_MS: float = 35.0
+STEER_MIN_PULSE_MS: float = 30.0
 # Radius of the HUD steering wheel graphic (in pixels)
 STEER_WHEEL_RADIUS: int = 90
 
-# --- Continuous Throttle / Gas Settings ---
-# Throttle activation threshold: when smoothed throttle > threshold, press KEY_GAS
-GAS_THRESHOLD: float = 0.15
-# Hand height calibration (normalized Y coordinate: 0.0 = top of frame, 1.0 = bottom)
-GAS_Y_TOP: float = 0.22       # Hand height corresponding to 100% (1.0) throttle
-GAS_Y_BOTTOM: float = 0.72    # Hand height corresponding to 0% (0.0) throttle
+# --- Continuous Throttle / Gas Settings (Proportional Speed Modulation) ---
+# Below this throttle, gas is completely OFF (Coast / Idle)
+GAS_IDLE_THRESHOLD: float = 0.18
+# Above this throttle, gas is 100% full continuous hold
+GAS_FULL_THRESHOLD: float = 0.75
+# Pulse period (in ms) for proportional throttle modulation in keyboard games
+GAS_PULSE_INTERVAL_MS: float = 140.0
+# Hand height calibration (normalized Y: 0.0 = top of camera, 1.0 = bottom)
+GAS_Y_TOP: float = 0.20       # Hand raised high -> 100% throttle
+GAS_Y_BOTTOM: float = 0.60    # Hand at normal wheel rest height -> 0% throttle
 # Throttle smoothing factor (EMA, 0.0 to 1.0)
 GAS_SMOOTHING_ALPHA: float = 0.22
 # Which hand to use for throttle: "RIGHT", "LEFT", "HIGHEST", or "AVERAGE"
@@ -98,7 +102,7 @@ GAS_HAND_PREFERENCE: str = "RIGHT"
 START_GESTURES: List[str] = ["Victory"]
 START_MIN_CONFIDENCE: float = 0.60
 KEY_START_GAME = Key.space  # Key sent to start the browser game (Space / Enter)
-AUTO_RUN_ON_START: bool = True  # Automatically engages gas when start sign is shown
+AUTO_RUN_ON_START: bool = False  # If False, user controls speed naturally via hand height
 
 # --- Brake Gesture Settings ---
 # MediaPipe recognized gesture names that trigger brake
@@ -477,7 +481,7 @@ def draw_hud_panel(
     cv2.rectangle(frame, (col2_x, bar_top), (col2_x + bar_w, bar_top + bar_h), (80, 80, 95), 1, cv2.LINE_AA)
 
     # Gas threshold marker line on bar
-    thresh_x = int(col2_x + bar_w * GAS_THRESHOLD)
+    thresh_x = int(col2_x + bar_w * GAS_IDLE_THRESHOLD)
     cv2.line(frame, (thresh_x, bar_top - 2), (thresh_x, bar_top + bar_h + 2), COLOR_WHITE, 1, cv2.LINE_AA)
 
     # Gas numeric readout & state
@@ -587,15 +591,15 @@ def main():
     # Engine & Game Start State
     engine_started: bool = False
     start_banner_until: float = 0.0
-    victory_gesture_prev: bool = False
+    last_start_trigger_time: float = 0.0
 
     # Performance / FPS Tracking
     prev_time = time.time()
     fps_val = 0.0
 
-    # Tapping / Pulsing Timer for Moderate Steering
-    # Tracks cycle reference timestamp
+    # Tapping / Pulsing Timers for Progressive Steering & Throttle Modulation
     steer_cycle_start_time = time.time()
+    gas_cycle_start_time = time.time()
 
     print("[Ready] Running! Focus your browser racing game window and enjoy driving!")
     print("[Ready] Flash the Victory / Peace sign ✌️ to START the game & engine!")
@@ -652,14 +656,13 @@ def main():
                     if top_gesture.category_name in START_GESTURES and top_gesture.score >= START_MIN_CONFIDENCE:
                         start_gesture_active = True
 
-            # Trigger Game Start when Victory / Peace Sign is flashed
-            if start_gesture_active and not victory_gesture_prev:
+            # Trigger Game Start when Victory / Peace Sign is flashed (with 2.5s debounce)
+            if start_gesture_active and (curr_time - last_start_trigger_time > 2.5):
                 print("[Ignition] ✌️ Victory / Peace sign detected! Starting game & engine...")
                 key_state.tap_key(KEY_START_GAME)
                 engine_started = True
+                last_start_trigger_time = curr_time
                 start_banner_until = curr_time + 3.0  # Display banner for 3 seconds
-
-            victory_gesture_prev = start_gesture_active
 
             # ------------------------------------------------------------------
             # 2. TWO-HAND VIRTUAL STEERING WHEEL LOGIC
@@ -759,15 +762,23 @@ def main():
             # Smooth throttle value with Exponential Moving Average (EMA)
             smoothed_throttle = throttle_smoother.update(raw_throttle)
 
-            # If Victory gesture is actively shown and AUTO_RUN_ON_START is true, surge gas
-            if start_gesture_active and AUTO_RUN_ON_START and not brake_active:
-                smoothed_throttle = max(smoothed_throttle, 0.70)
+            # PROPORTIONAL THROTTLE MODULATION (PWM Duty-Cycle for Keyboard)
+            # Prevents car from accelerating uncontrollably to max speed!
+            gas_press = False
+            if brake_active or smoothed_throttle < GAS_IDLE_THRESHOLD:
+                gas_press = False
+            elif smoothed_throttle >= GAS_FULL_THRESHOLD:
+                # Full throttle: continuous hold (100% power)
+                gas_press = True
+            else:
+                # Moderate throttle: pulse UP arrow in cycles proportional to height
+                duty_ratio = (smoothed_throttle - GAS_IDLE_THRESHOLD) / (GAS_FULL_THRESHOLD - GAS_IDLE_THRESHOLD)
+                pulse_on_ms = max(25.0, duty_ratio * GAS_PULSE_INTERVAL_MS)
+                gas_cycle_ms = ((curr_time - gas_cycle_start_time) * 1000.0) % GAS_PULSE_INTERVAL_MS
+                gas_press = (gas_cycle_ms < pulse_on_ms)
 
-            # NOTE FOR ANALOG GAMEPADS (e.g. vgamepad / pyvjoy):
-            # If you want true 0.0 - 1.0 analog axis input for games that support analog triggers:
-            #   gamepad.right_trigger_float(smoothed_throttle)
-            # For digital keyboard controls (UP arrow):
-            gas_active = (smoothed_throttle >= GAS_THRESHOLD) and (not brake_active)
+            # Active gas indicator for HUD
+            gas_active = (smoothed_throttle >= GAS_IDLE_THRESHOLD) and (not brake_active)
 
             # Apply Gas & Brake Key States
             if brake_active:
@@ -776,7 +787,7 @@ def main():
                     key_state.set_state(KEY_GAS, False)
             else:
                 key_state.set_state(KEY_BRAKE, False)
-                key_state.set_state(KEY_GAS, gas_active)
+                key_state.set_state(KEY_GAS, gas_press)
 
             # ------------------------------------------------------------------
             # 4. RENDER OVERLAY & HUD

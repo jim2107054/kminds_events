@@ -1,0 +1,68 @@
+# 🏎️ Gesture Car Control
+
+Control any browser or desktop racing game using webcam hand gestures with real-time HUD telemetry, MediaPipe AI tracking, and OS-level keyboard controls.
+
+---
+
+## ⚡ Quick Start
+
+### 1. Install Dependencies
+```bash
+pip install opencv-python mediapipe pynput numpy
+```
+
+### 2. Run the Script
+```bash
+python gesture_car_control.py
+```
+*(The AI gesture recognition model `gesture_recognizer.task` will automatically download on first run.)*
+
+### 3. Play
+1. Open any racing game in your browser (e.g. [Slow Roads](https://slowroads.io)).
+2. **Click inside the game window** so it has keyboard focus.
+3. Use hand gestures in front of your webcam to drive!
+
+---
+
+## 🎮 Hand Gesture Controls
+
+| Gesture | Action | Game Key / Response |
+| :--- | :--- | :--- |
+| **✌️ Victory / Peace Sign** | **Start Game & Engine** | Taps `Space` / `Enter` to start & surges throttle |
+| **👐 Two-Hand Wheel Tilt** | **Steer Left / Right** | Tilt left/right like a steering wheel (`Left` / `Right` arrows) |
+| **✋ Right Hand Up / Down** | **Gas (Accelerate)** | Move hand higher for more gas (`Up` arrow) |
+| **✊ Closed Fist** | **Brake / Reverse** | Cuts gas and holds `Down` arrow |
+| **⌨️ `q` or `Esc`** | **Exit** | Safely releases all keys & closes webcam |
+
+---
+
+## ⚙️ Key Configuration (Top of `gesture_car_control.py`)
+
+All thresholds and keybindings can be tuned directly at the top of the file:
+
+```python
+# --- Key Bindings ---
+KEY_GAS = Key.up          # Accelerate
+KEY_BRAKE = Key.down      # Brake / Reverse
+KEY_LEFT = Key.left       # Steer Left
+KEY_RIGHT = Key.right     # Steer Right
+KEY_START_GAME = Key.space # Start / Ignition
+
+# --- Steering Settings ---
+STEER_DEADZONE_DEG = 8.0  # Straight / Center threshold (degrees)
+STEER_MAX_DEG = 30.0      # Full continuous turn lock (degrees)
+
+# --- Gas / Speed Modulation Settings ---
+GAS_IDLE_THRESHOLD = 0.18 # Below this: Coasting / Idle (0% gas)
+GAS_FULL_THRESHOLD = 0.75 # Above this: 100% full gas hold
+GAS_Y_TOP = 0.20          # Hand height for 100% gas (higher up)
+GAS_Y_BOTTOM = 0.60       # Hand height for 0% gas (normal wheel height)
+```
+
+---
+
+## 🏁 Recommended Games
+- **[Slow Roads (slowroads.io)](https://slowroads.io)** *(Recommended for smooth testing)*
+- **[Madalin Stunt Cars 2](https://www.crazygames.com/game/madalin-stunt-cars-2)**
+- **[Drift Hunters](https://www.crazygames.com/game/drift-hunters)**
+- Any desktop or browser racing game supporting Arrow Keys.
