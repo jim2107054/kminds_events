@@ -11,11 +11,17 @@ Control any browser or desktop racing game using webcam hand gestures with real-
 pip install opencv-python mediapipe pynput numpy
 ```
 
-### 2. Run the Script
-```bash
-python gesture_car_control.py
-```
-*(The AI gesture recognition model `gesture_recognizer.task` will automatically download on first run.)*
+### 2. Run the Game
+- **From root directory**:
+  ```bash
+  python car_game/gesture_car_control.py
+  ```
+- **Or from inside the `car_game` folder**:
+  ```bash
+  cd car_game
+  python gesture_car_control.py
+  ```
+*(The AI gesture model `gesture_recognizer.task` will automatically download on first run.)*
 
 ### 3. Play
 1. Open any racing game in your browser (e.g. [Slow Roads](https://slowroads.io)).
