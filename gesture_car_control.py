@@ -93,6 +93,13 @@ GAS_SMOOTHING_ALPHA: float = 0.22
 # Which hand to use for throttle: "RIGHT", "LEFT", "HIGHEST", or "AVERAGE"
 GAS_HAND_PREFERENCE: str = "RIGHT"
 
+# --- Start / Ignition Gesture Settings ---
+# Gesture to start the game / ignition (Victory / Peace sign ✌️)
+START_GESTURES: List[str] = ["Victory"]
+START_MIN_CONFIDENCE: float = 0.60
+KEY_START_GAME = Key.space  # Key sent to start the browser game (Space / Enter)
+AUTO_RUN_ON_START: bool = True  # Automatically engages gas when start sign is shown
+
 # --- Brake Gesture Settings ---
 # MediaPipe recognized gesture names that trigger brake
 BRAKE_GESTURES: List[str] = ["Closed_Fist"]
@@ -180,7 +187,17 @@ class KeyState:
             KEY_BRAKE: False,
             KEY_LEFT: False,
             KEY_RIGHT: False,
+            KEY_START_GAME: False,
         }
+
+    def tap_key(self, key: Key) -> None:
+        """Briefly taps a key (press then release) for one-off actions like starting the game."""
+        try:
+            self.keyboard.press(key)
+            time.sleep(0.04)
+            self.keyboard.release(key)
+        except Exception as e:
+            print(f"[KeyState] Error tapping {key}: {e}")
 
     def set_state(self, key: Key, should_press: bool) -> None:
         """
@@ -409,11 +426,13 @@ def draw_hud_panel(
     gas_active: bool,
     brake_active: bool,
     fps: float,
-    num_hands: int
+    num_hands: int,
+    engine_started: bool = False,
+    show_start_banner: bool = False
 ):
     """
     Renders the modern, high-contrast racing telemetry dashboard bar at the top of the screen.
-    Includes live gauges for Throttle, Steering Angle, Brake Status, Hands detected, and FPS.
+    Includes live gauges for Throttle, Steering Angle, Brake Status, Engine State, and FPS.
     """
     h, w, _ = frame.shape
     bar_height = 82
@@ -442,11 +461,11 @@ def draw_hud_panel(
 
     # Section 2: THROTTLE / GAS TELEMETRY & BAR
     # --------------------------------------------------
-    col2_x = 360
+    col2_x = 330
     cv2.putText(frame, "THROTTLE / GAS", (col2_x, bar_y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_GRAY, 1, cv2.LINE_AA)
     
     # Throttle Progress Bar
-    bar_w = 180
+    bar_w = 160
     bar_h = 16
     bar_top = bar_y + 40
     cv2.rectangle(frame, (col2_x, bar_top), (col2_x + bar_w, bar_top + bar_h), COLOR_DARK_GRAY, -1)
@@ -464,37 +483,59 @@ def draw_hud_panel(
     # Gas numeric readout & state
     gas_label = f"{throttle_val:.2f} " + ("[GAS ON]" if gas_active else "[IDLE]")
     gas_text_color = COLOR_GREEN if gas_active else COLOR_WHITE
-    cv2.putText(frame, gas_label, (col2_x + bar_w + 14, bar_top + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.55, gas_text_color, 2, cv2.LINE_AA)
+    cv2.putText(frame, gas_label, (col2_x + bar_w + 12, bar_top + 13), cv2.FONT_HERSHEY_SIMPLEX, 0.52, gas_text_color, 2, cv2.LINE_AA)
 
-    # Section 3: BRAKE TELEMETRY BADGE
+    # Section 3: BRAKE & ENGINE BADGES
     # --------------------------------------------------
-    col3_x = 730
-    cv2.putText(frame, "BRAKE SYSTEM", (col3_x, bar_y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_GRAY, 1, cv2.LINE_AA)
+    col3_x = 680
+    cv2.putText(frame, "SYSTEMS", (col3_x, bar_y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_GRAY, 1, cv2.LINE_AA)
     
-    badge_w, badge_h = 130, 26
-    badge_top = bar_y + 36
+    badge_w, badge_h = 110, 24
+    badge_top = bar_y + 38
     badge_bg = COLOR_RED if brake_active else COLOR_DARK_GRAY
     cv2.rectangle(frame, (col3_x, badge_top), (col3_x + badge_w, badge_top + badge_h), badge_bg, -1)
     cv2.rectangle(frame, (col3_x, badge_top), (col3_x + badge_w, badge_top + badge_h), (90, 90, 100), 1, cv2.LINE_AA)
     
-    badge_txt = "BRAKE ACTIVE" if brake_active else "BRAKE OFF"
+    badge_txt = "BRAKE ON" if brake_active else "BRAKE OFF"
     b_txt_color = COLOR_WHITE if brake_active else COLOR_GRAY
-    cv2.putText(frame, badge_txt, (col3_x + 10, badge_top + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.48, b_txt_color, 2, cv2.LINE_AA)
+    cv2.putText(frame, badge_txt, (col3_x + 8, badge_top + 17), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_txt_color, 2, cv2.LINE_AA)
+
+    # Engine Ignition Badge
+    eng_x = col3_x + badge_w + 12
+    eng_w = 145
+    eng_bg = (30, 120, 40) if engine_started else (35, 70, 110)
+    cv2.rectangle(frame, (eng_x, badge_top), (eng_x + eng_w, badge_top + badge_h), eng_bg, -1)
+    cv2.rectangle(frame, (eng_x, badge_top), (eng_x + eng_w, badge_top + badge_h), (80, 140, 90) if engine_started else (80, 100, 130), 1, cv2.LINE_AA)
+    eng_txt = "ENGINE: RUN" if engine_started else "PEACE 2 START"
+    eng_color = COLOR_WHITE if engine_started else COLOR_AMBER
+    cv2.putText(frame, eng_txt, (eng_x + 8, badge_top + 17), cv2.FONT_HERSHEY_SIMPLEX, 0.44, eng_color, 2, cv2.LINE_AA)
 
     # Section 4: FPS & SYSTEM STATUS
     # --------------------------------------------------
-    col4_x = w - 240
+    col4_x = w - 210
     cv2.putText(frame, "STATUS", (col4_x, bar_y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_GRAY, 1, cv2.LINE_AA)
-    fps_txt = f"FPS: {fps:4.1f} | HANDS: {num_hands}/2"
+    fps_txt = f"FPS: {fps:4.1f} | {num_hands} HANDS"
     hands_color = COLOR_ACCENT_CYAN if num_hands >= 2 else (COLOR_AMBER if num_hands == 1 else COLOR_GRAY)
-    cv2.putText(frame, fps_txt, (col4_x, bar_y + 55), cv2.FONT_HERSHEY_SIMPLEX, 0.52, hands_color, 1, cv2.LINE_AA)
+    cv2.putText(frame, fps_txt, (col4_x, bar_y + 55), cv2.FONT_HERSHEY_SIMPLEX, 0.48, hands_color, 1, cv2.LINE_AA)
+
+    # Floating Start Alert Banner (Displayed when Victory gesture triggers start)
+    if show_start_banner:
+        banner_w, banner_h = 560, 52
+        bx = (w - banner_w) // 2
+        by = bar_y + bar_height + 25
+        b_overlay = frame.copy()
+        cv2.rectangle(b_overlay, (bx, by), (bx + banner_w, by + banner_h), (20, 80, 30), -1)
+        cv2.addWeighted(b_overlay, 0.88, frame, 0.12, 0, frame)
+        cv2.rectangle(frame, (bx, by), (bx + banner_w, by + banner_h), COLOR_GREEN, 2, cv2.LINE_AA)
+        banner_msg = "VICTORY SIGN DETECTED - GAME & CAR STARTED!"
+        cv2.putText(frame, banner_msg, (bx + 18, by + 34), cv2.FONT_HERSHEY_SIMPLEX, 0.58, COLOR_WHITE, 2, cv2.LINE_AA)
 
     # Bottom Quick-Help Guide Bar
     help_overlay = frame.copy()
     cv2.rectangle(help_overlay, (0, h - 28), (w, h), (10, 10, 15), -1)
     cv2.addWeighted(help_overlay, 0.75, frame, 0.25, 0, frame)
-    help_text = "[TILT 2 HANDS] Steer  |  [RIGHT HAND UP/DOWN] Gas  |  [CLOSED FIST] Brake  |  [Q / ESC] Quit"
-    cv2.putText(frame, help_text, (20, h - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (180, 180, 190), 1, cv2.LINE_AA)
+    help_text = "[PEACE SIGN 2 FINGERS] Start Game  |  [TILT 2 HANDS] Steer  |  [RIGHT HAND UP] Gas  |  [CLOSED FIST] Brake  |  [Q] Quit"
+    cv2.putText(frame, help_text, (20, h - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (180, 180, 190), 1, cv2.LINE_AA)
 
 
 # ==============================================================================
@@ -543,6 +584,11 @@ def main():
     steer_smoother = SmoothedValue(alpha=STEER_SMOOTHING_ALPHA, initial_value=0.0)
     throttle_smoother = SmoothedValue(alpha=GAS_SMOOTHING_ALPHA, initial_value=0.0)
 
+    # Engine & Game Start State
+    engine_started: bool = False
+    start_banner_until: float = 0.0
+    victory_gesture_prev: bool = False
+
     # Performance / FPS Tracking
     prev_time = time.time()
     fps_val = 0.0
@@ -552,6 +598,7 @@ def main():
     steer_cycle_start_time = time.time()
 
     print("[Ready] Running! Focus your browser racing game window and enjoy driving!")
+    print("[Ready] Flash the Victory / Peace sign ✌️ to START the game & engine!")
     print("[Ready] Press 'q' or Esc in the webcam window to exit safely.\n")
 
     try:
@@ -590,15 +637,29 @@ def main():
             num_hands = len(detected_hands_landmarks)
 
             # ------------------------------------------------------------------
-            # 1. BRAKE GESTURE DETECTION
+            # 1. GESTURE DETECTION (BRAKE & VICTORY / GAME START)
             # ------------------------------------------------------------------
             brake_active = False
+            start_gesture_active = False
+
             for hand_idx, gesture_list in enumerate(detected_gestures):
                 if gesture_list and len(gesture_list) > 0:
                     top_gesture = gesture_list[0]
+                    # Check for Brake gesture (Closed Fist)
                     if top_gesture.category_name in BRAKE_GESTURES and top_gesture.score >= BRAKE_MIN_CONFIDENCE:
                         brake_active = True
-                        break
+                    # Check for Game Start gesture (Victory / Peace Sign ✌️)
+                    if top_gesture.category_name in START_GESTURES and top_gesture.score >= START_MIN_CONFIDENCE:
+                        start_gesture_active = True
+
+            # Trigger Game Start when Victory / Peace Sign is flashed
+            if start_gesture_active and not victory_gesture_prev:
+                print("[Ignition] ✌️ Victory / Peace sign detected! Starting game & engine...")
+                key_state.tap_key(KEY_START_GAME)
+                engine_started = True
+                start_banner_until = curr_time + 3.0  # Display banner for 3 seconds
+
+            victory_gesture_prev = start_gesture_active
 
             # ------------------------------------------------------------------
             # 2. TWO-HAND VIRTUAL STEERING WHEEL LOGIC
@@ -698,6 +759,10 @@ def main():
             # Smooth throttle value with Exponential Moving Average (EMA)
             smoothed_throttle = throttle_smoother.update(raw_throttle)
 
+            # If Victory gesture is actively shown and AUTO_RUN_ON_START is true, surge gas
+            if start_gesture_active and AUTO_RUN_ON_START and not brake_active:
+                smoothed_throttle = max(smoothed_throttle, 0.70)
+
             # NOTE FOR ANALOG GAMEPADS (e.g. vgamepad / pyvjoy):
             # If you want true 0.0 - 1.0 analog axis input for games that support analog triggers:
             #   gamepad.right_trigger_float(smoothed_throttle)
@@ -732,6 +797,7 @@ def main():
             )
 
             # Draw telemetry dashboard panel
+            show_banner = (curr_time < start_banner_until)
             draw_hud_panel(
                 frame=frame,
                 steer_angle=smoothed_steer_angle,
@@ -740,7 +806,9 @@ def main():
                 gas_active=gas_active,
                 brake_active=brake_active,
                 fps=fps_val,
-                num_hands=num_hands
+                num_hands=num_hands,
+                engine_started=engine_started,
+                show_start_banner=show_banner
             )
 
             # Display frame in OpenCV window
