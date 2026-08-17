@@ -19,7 +19,7 @@ CONTROLS SCHEME:
      - Vertical position of the throttle hand (Right Hand by default) computes continuous
        throttle between 0.0 (bottom) and 1.0 (top).
      - Exponential moving average (EMA) smoothing eliminates frame-to-frame jitter.
-     - Digital Game Mapping: Throttle > GAS_THRESHOLD holds the UP arrow key.
+     - Digital Game Mapping: Throttle > GAS_IDLE_THRESHOLD modulates/holds the UP arrow key.
      - Live HUD displays the continuous 0.0-1.0 throttle bar and current ON/OFF state.
      - Extension points included for drop-in analog gamepad axes (e.g. vgamepad).
 
@@ -148,6 +148,11 @@ def ensure_model_file(model_path: str = MODEL_FILENAME, url: str = MODEL_URL) ->
     """
     if os.path.exists(model_path):
         return model_path
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_rel_path = os.path.join(script_dir, model_path)
+    if os.path.exists(script_rel_path):
+        return script_rel_path
 
     print(f"[Setup] MediaPipe Gesture Recognizer model not found locally.")
     print(f"[Setup] Downloading from: {url} ...")
@@ -551,7 +556,7 @@ def main():
     print("            GESTURE CAR CONTROL - STARTING ENGINE")
     print("=" * 70)
     print(f"[Config] Steering Deadzone: ±{STEER_DEADZONE_DEG}° | Full Lock: ±{STEER_MAX_DEG}°")
-    print(f"[Config] Gas Threshold: {GAS_THRESHOLD:.2f} (Y: {GAS_Y_TOP:.2f} top -> {GAS_Y_BOTTOM:.2f} bottom)")
+    print(f"[Config] Gas Thresholds: Idle={GAS_IDLE_THRESHOLD:.2f}, Full={GAS_FULL_THRESHOLD:.2f} (Y: {GAS_Y_TOP:.2f} top -> {GAS_Y_BOTTOM:.2f} bottom)")
     print(f"[Config] Brake Gesture: {BRAKE_GESTURES} (Confidence >= {BRAKE_MIN_CONFIDENCE:.2f})")
     print(f"[Config] Key Mappings: UP=Gas, DOWN=Brake, LEFT=SteerLeft, RIGHT=SteerRight")
     print("-" * 70)
