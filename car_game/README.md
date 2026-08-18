@@ -38,15 +38,24 @@ pip install opencv-python mediapipe pynput numpy
 | **👐 Two-Hand Wheel Tilt** | **Steer Left / Right** | Tilt left/right like a steering wheel (`Left` / `Right` arrows) |
 | **✋ Right Hand Up / Down** | **Gas (Accelerate)** | Move hand higher for more gas (`Up` arrow) |
 | **✊ Closed Fist** | **Brake / Reverse** | Cuts gas and holds `Down` arrow |
+| **🔍 `+` / `-`** | **Scale Window** | Scale HUD window larger or smaller |
+| **🎯 `0`** | **Reset Window Size** | Reset to default compact overlay size (640x360) |
+| **📌 `t`** | **Pin Always-on-Top** | Toggle floating Picture-in-Picture mode over game |
 | **⌨️ `q` or `Esc`** | **Exit** | Safely releases all keys & closes webcam |
 
 ---
 
 ## ⚙️ Key Configuration (Top of `gesture_car_control.py`)
 
-All thresholds and keybindings can be tuned directly at the top of the file:
+All thresholds, window sizes, and keybindings can be tuned directly at the top of the file:
 
 ```python
+# --- Window Scaling & Display Settings ---
+WINDOW_INITIAL_WIDTH = 640   # Default HUD window width
+WINDOW_INITIAL_HEIGHT = 360  # Default HUD window height (16:9 ratio)
+WINDOW_RESIZABLE = True      # Drag borders to resize freely
+WINDOW_ALWAYS_ON_TOP = True  # Float over browser game window
+
 # --- Key Bindings ---
 KEY_GAS = Key.up          # Accelerate
 KEY_BRAKE = Key.down      # Brake / Reverse

@@ -112,12 +112,22 @@ BRAKE_MIN_CONFIDENCE: float = 0.60
 # If True, activating brake automatically releases gas key
 BRAKE_OVERRIDE_GAS: bool = True
 
-# --- Camera & Video Settings ---
+# --- Camera & Video Capture Settings ---
 CAMERA_INDEX: int = 0
-FRAME_WIDTH: int = 1280
-FRAME_HEIGHT: int = 720
+FRAME_WIDTH: int = 1280       # Internal camera capture width
+FRAME_HEIGHT: int = 720       # Internal camera capture height
 # Flip camera horizontally so physical left hand appears on the left side of screen
 MIRROR_VIEW: bool = True
+
+# --- Window Scaling & Display Settings ---
+WINDOW_TITLE: str = "Gesture Car Control - Racing HUD"
+# Initial HUD window dimensions on screen (Compact 16:9 Picture-in-Picture display)
+WINDOW_INITIAL_WIDTH: int = 640
+WINDOW_INITIAL_HEIGHT: int = 360
+# Set to True so you can freely drag borders to make it smaller/larger
+WINDOW_RESIZABLE: bool = True
+# Keep HUD window pinned on top of the browser racing game
+WINDOW_ALWAYS_ON_TOP: bool = True
 
 # --- Model Auto-Download Settings ---
 MODEL_URL: str = (
@@ -543,7 +553,7 @@ def draw_hud_panel(
     help_overlay = frame.copy()
     cv2.rectangle(help_overlay, (0, h - 28), (w, h), (10, 10, 15), -1)
     cv2.addWeighted(help_overlay, 0.75, frame, 0.25, 0, frame)
-    help_text = "[PEACE SIGN 2 FINGERS] Start Game  |  [TILT 2 HANDS] Steer  |  [RIGHT HAND UP] Gas  |  [CLOSED FIST] Brake  |  [Q] Quit"
+    help_text = "[PEACE ✌️] Start | [TILT] Steer | [HAND UP] Gas | [FIST ✊] Brake | [+/-] Scale | [T] Pin Top | [Q] Quit"
     cv2.putText(frame, help_text, (20, h - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (180, 180, 190), 1, cv2.LINE_AA)
 
 
@@ -593,6 +603,24 @@ def main():
     steer_smoother = SmoothedValue(alpha=STEER_SMOOTHING_ALPHA, initial_value=0.0)
     throttle_smoother = SmoothedValue(alpha=GAS_SMOOTHING_ALPHA, initial_value=0.0)
 
+    # 5. Initialize Resizable OpenCV Window
+    if WINDOW_RESIZABLE:
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_TITLE, WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT)
+    else:
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_AUTOSIZE)
+
+    # Track current window dimensions and always-on-top state
+    current_display_w = WINDOW_INITIAL_WIDTH
+    current_display_h = WINDOW_INITIAL_HEIGHT
+    is_always_on_top = WINDOW_ALWAYS_ON_TOP
+
+    if is_always_on_top:
+        try:
+            cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_TOPMOST, 1)
+        except Exception:
+            pass
+
     # Engine & Game Start State
     engine_started: bool = False
     start_banner_until: float = 0.0
@@ -608,7 +636,8 @@ def main():
 
     print("[Ready] Running! Focus your browser racing game window and enjoy driving!")
     print("[Ready] Flash the Victory / Peace sign ✌️ to START the game & engine!")
-    print("[Ready] Press 'q' or Esc in the webcam window to exit safely.\n")
+    print(f"[Ready] HUD window initialized at {WINDOW_INITIAL_WIDTH}x{WINDOW_INITIAL_HEIGHT} (freely resizable with mouse).")
+    print("[Ready] Hotkeys: [+/-] Scale Window | [0] Reset Size | [T] Pin Always-on-Top | [Q] Exit\n")
 
     try:
         while True:
@@ -828,16 +857,42 @@ def main():
             )
 
             # Display frame in OpenCV window
-            cv2.imshow("Gesture Car Control - Racing HUD", frame)
+            cv2.imshow(WINDOW_TITLE, frame)
 
-            # Process window events & check for quit ('q' or Esc)
+            # Process window events & check for hotkeys
             key = cv2.waitKey(1) & 0xFF
             if key in [ord('q'), ord('Q'), 27]:
                 print("\n[Exit] User requested exit ('q' or Esc). Shutting down...")
                 break
+            elif key in [ord('+'), ord('=')]:
+                # Scale window up (+15%)
+                current_display_w = min(1920, int(current_display_w * 1.15))
+                current_display_h = min(1080, int(current_display_h * 1.15))
+                cv2.resizeWindow(WINDOW_TITLE, current_display_w, current_display_h)
+                print(f"[Window] Scaled UP -> {current_display_w}x{current_display_h}")
+            elif key in [ord('-'), ord('_')]:
+                # Scale window down (-15%)
+                current_display_w = max(240, int(current_display_w * 0.85))
+                current_display_h = max(135, int(current_display_h * 0.85))
+                cv2.resizeWindow(WINDOW_TITLE, current_display_w, current_display_h)
+                print(f"[Window] Scaled DOWN -> {current_display_w}x{current_display_h}")
+            elif key == ord('0'):
+                # Reset window to default initial dimensions
+                current_display_w = WINDOW_INITIAL_WIDTH
+                current_display_h = WINDOW_INITIAL_HEIGHT
+                cv2.resizeWindow(WINDOW_TITLE, current_display_w, current_display_h)
+                print(f"[Window] Reset size -> {current_display_w}x{current_display_h}")
+            elif key in [ord('t'), ord('T')]:
+                # Toggle Always-On-Top
+                is_always_on_top = not is_always_on_top
+                try:
+                    cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_TOPMOST, 1 if is_always_on_top else 0)
+                    print(f"[Window] Always-On-Top: {'PINNED (ON)' if is_always_on_top else 'UNPINNED (OFF)'}")
+                except Exception:
+                    pass
 
             # Check if user closed window with 'X' button
-            if cv2.getWindowProperty("Gesture Car Control - Racing HUD", cv2.WND_PROP_VISIBLE) < 1:
+            if cv2.getWindowProperty(WINDOW_TITLE, cv2.WND_PROP_VISIBLE) < 1:
                 print("\n[Exit] Window closed by user. Shutting down...")
                 break
 
